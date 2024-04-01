@@ -1,0 +1,359 @@
+---
+import chalk from 'chalk';
+import config from '../config';
+import { supabase } from "../lib/supabase";
+import db from '../database';
+import Sidebar from "../components/sidebar.astro";
+import restype from "../restype"
+import { TITLE,SITE_DESCRIPTION,LOGO } from '../consts';
+import Header from "../components/head.astro"
+import Footer from "../components/footer.astro"
+import Nav from "../components/nav.astro";
+
+const { cookies, redirect } = Astro;
+
+const accessToken = cookies.get("sb-access-token");
+const refreshToken = cookies.get("sb-refresh-token");
+if (!accessToken || !refreshToken) {
+  return redirect("/signin");
+}
+const { data, error } = await supabase.auth.setSession({
+  refresh_token: refreshToken.value,
+  access_token: accessToken.value,
+});
+if (error) {
+  cookies.delete("sb-access-token", {
+    path: "/",
+  });
+  cookies.delete("sb-refresh-token", {
+    path: "/",
+  });
+
+  return redirect("/signin");
+}
+const resconf = restype.restype
+const errorstate = Astro.url.searchParams.get('error')! || '';
+const errormsg = Astro.url.searchParams.get('error')! || '';
+const success = Astro.url.searchParams.get('success')! || '';
+const srvid = Astro.url.searchParams.get('id')! || '';
+
+const limitint = Astro.url.searchParams.get('limit')! || ''
+let limit;
+if (Astro.url.searchParams.get("limit")){ limit = "Limit is " + limitint + ` ${resconf}`;
+}
+const {
+  data: { user },
+} = await supabase.auth.getUser()
+const metadata = user.user_metadata
+const username = metadata.full_name
+const email = data?.user?.email
+const avatar = metadata.avatar_url
+
+let accountlistjson = await fetch(
+    config.pterodactyl.url + "/api/application/users?include=servers&filter[email]=" + encodeURIComponent(email),
+    {
+        method: "get",
+        headers: {
+            'Content-Type': 'application/json',
+            "Authorization": `Bearer ${config.pterodactyl.api}`
+        }
+    });
+              let accountlist = await accountlistjson.json();
+              let userdata = accountlist.data.filter(acc => acc.attributes.email == email);
+
+let cacheaccount = await fetch(config.pterodactyl.url + "/api/application/users/" + userdata[0].attributes.id + "?include=servers",
+ {
+  method: "get",
+  headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${config.pterodactyl.api}` }
+ });
+if (await cacheaccount.statusText == "Not Found") {
+  if (error) {
+    console.log(chalk.red(`[KlovitClient] An error has occured on path ${Astro.url.pathname}:`));
+  };};
+let cacheaccountinfo = JSON.parse(await cacheaccount.text());
+    
+const pterodactyl = cacheaccountinfo.attributes;
+const adminstatus = pterodactyl.root_admin
+const servers = pterodactyl.relationships.servers.data[0]
+
+// RESOURCES
+const extraresources = await db.get("extraresources-" + username)
+const pkglist = config.packages.list.pkg
+const pkg = await db.get(`package-${username}`)
+// Package Limits
+const pkgram = config.packages.list[await db.get("package-" + username)].ram
+const pkgdisk = config.packages.list[await db.get("package-" + username)].disk
+const pkgserverslimit = config.packages.list[await db.get("package-" + username)].servers
+// Actual Limits
+let ccore;
+ccore = config.packages.list[await db.get("package-" + username)].cpu + extraresources.cpu
+ccore += config.resource_type === 'MB' ? '%' : ' Core(s)'
+const ramlimit = pkgram + extraresources.ram
+const disklimit = pkgdisk + extraresources.disk
+const serverslimit = pkgserverslimit + extraresources.servers
+// Used resources
+let serversused = pterodactyl.relationships.servers.data.length;
+let ramused = 0;
+let diskused = 0;
+let cpuused = 0;
+if (config.resource_type ==="GB") {
+for (let i = 0, len = pterodactyl.relationships.servers.data.length; i < len; i++) {
+    ramused = ramused + (typeof pterodactyl.relationships.servers.data[i].attributes.limits.memory == "number" ? pterodactyl.relationships.servers.data[i].attributes.limits.memory : 0)/1024;
+    diskused = diskused + (typeof pterodactyl.relationships.servers.data[i].attributes.limits.disk == "number" ? pterodactyl.relationships.servers.data[i].attributes.limits.disk : 0)/1024;
+    cpuused = cpuused + (typeof pterodactyl.relationships.servers.data[i].attributes.limits.cpu == "number" ? pterodactyl.relationships.servers.data[i].attributes.limits.cpu : 0)/100;
+}
+} else {
+    for (let i = 0, len = pterodactyl.relationships.servers.data.length; i < len; i++) {
+    ramused = ramused + (typeof pterodactyl.relationships.servers.data[i].attributes.limits.memory == "number" ? pterodactyl.relationships.servers.data[i].attributes.limits.memory : 0);
+    diskused = diskused + (typeof pterodactyl.relationships.servers.data[i].attributes.limits.disk == "number" ? pterodactyl.relationships.servers.data[i].attributes.limits.disk : 0);
+    cpuused = cpuused + (typeof pterodactyl.relationships.servers.data[i].attributes.limits.cpu == "number" ? pterodactyl.relationships.servers.data[i].attributes.limits.cpu : 0);
+}
+}
+
+let pterorelationshipsserverdata = pterodactyl.relationships.servers.data.filter(name => name.attributes.id.toString() !== srvid);
+let currentram;
+if (config.resource_type === "GB") {
+    currentram = pterorelationshipsserverdata[0].attributes.limits.memory/1024 + ` ${resconf}`;
+} else {
+    currentram = pterorelationshipsserverdata[0].attributes.limits.memory;
+}
+let currentdisk;
+if (config.resource_type === "GB") {
+currentdisk = pterorelationshipsserverdata[0].attributes.limits.disk/1024 + ` ${resconf}`;
+} else {
+currentdisk = pterorelationshipsserverdata[0].attributes.limits.disk
+}
+let currentcpu;
+if (config.resource_type === "GB") {
+currentcpu = pterorelationshipsserverdata[0].attributes.limits.cpu/100 + ` Core(s)`;
+} else {
+currentcpu = pterorelationshipsserverdata[0].attributes.limits.cpu + `%`
+}
+const currentname = pterorelationshipsserverdata[0].attributes.name;
+const coins = await db.get("balance-" + email)
+
+---
+<!DOCTYPE html>
+<html class="bg-zinc-950">
+<Header />
+<style> 
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500&display=swap');
+body { font-family: 'Fredoka', system-ui, sans-serif; }
+ body {
+    overflow-y: scroll;
+    overflow-x: hidden;
+ }
+ #deploydivmobile {
+    height: auto;
+    padding-bottom: 100px;
+ }
+ #resbox {
+    width: 732px;
+ }
+
+ </style> 
+<script>
+  // On page load or when changing themes, best to add inline in `head` to avoid FOUC
+  if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+  } else {
+      document.documentElement.classList.remove('dark')
+  }
+ </script>
+<body style="overflow-y: scroll;" class="bg-zinc-900 flex items-center justify-center h-screen">
+    <div class="hidden md:block bg-zinc-950 rounded-3xl  animation-blob h-screen w-screen">
+        <div class="antialiased">
+        <Sidebar />
+            <main class="p-4 pl-8 md:ml-64 md:mr-64 h-full min-h-screen shadow-2xl shadow-black backdrop-blur-2xl bg-zinc-900 rounded-[50px]">
+                {errorstate && <div style="border-radius: 15px; color: white; height: 50px; text-align: center; font-size: large;" style="border-radius: 15px;" class="rounded-xl mb-2 bg-red-700 alert mr-3 ml-3 mt-1">ERROR: {errormsg} {limit}</div>}
+                {success && <div style="border-radius: 15px; color: white; height: 50px; text-align: center; font-size: large;" style="border-radius: 15px;" class="rounded-xl mb-1 bg-green-700 alert mr-3 ml-3 mt-1">Success: {success}</div>}
+                                <div class="justify-start grid grid-cols-2 lg:ml-4 items-center">
+                    <h1 class="text-white text-[26px] lg:text-4xl mt-6">Hello {username}</h1>
+                    <button type="button" class="flex text-sm ml-80 items-right rounded-full md:mr-0" id="user-menu-button" aria-expanded="false" data-dropdown-toggle="profile-dd" data-dropdown-placement="top">
+                        <span class="sr-only">Open user menu</span>
+                        <img class="w-8 h-8 rounded-full"
+                            src={avatar} />
+                    </button>
+                    <div class="hidden animation duration-500 z-50 w-56 text-base list-none bg-zinc-800 divide-y divide-gray-600 rounded-xl"
+                    id="profile-dd">
+                    <div class="py-3 px-4">
+                        <span class="block text-sm font-semibold text-white text-left">
+                            {username}
+                        </span>
+                        <span class="block text-sm text-white text-left">{username} - {email}</span>
+                        <span class="block text-sm text-white text-left">Balance - {coins}</span>
+                    </div>
+                    <ul class="py-1 text-gray-300" aria-labelledby="dropdown">
+                        <li>
+                            <a href="/account"
+                                class="block py-2 px-4 text-sm text-gray-300 hover:text-white">My
+                                Account</a>
+                        </li>
+                    </ul>
+                    <ul class="py-1 text-rose-500" aria-labelledby="dropdown">
+                        <li>
+                            <a href="/api/auth/signout" class="block my-0 py-2 px-4 text-sm hover:text-red-600">Sign
+                                out</a>
+                        </li>
+                    </ul>
+                </div>
+                    <h1 class="text-white text-[15px] lg:text-2xl">Editing your server.</h1>
+                </div>
+                <span class="text-amber-500 text-lg">
+                    Resources
+                </span>
+                <div class="grid grid-cols-1 overflow-hidden lg:grid-cols-7 mt-4 gap-8">
+                    <div id="resbox" class="rounded-xl grid grid-cols-1 h-20 lg:grid-cols-4 col-span-4 bg-zinc-950 p-2">
+                        <div class="bg-zinc-900 m-1 h-14 w-40 hover:m-0 hover:duration-300 duration-100 rounded-xl p-2 text-center">
+                            <h1 class="text-white text-xs text-center">RAM {resconf}</h1>
+                            <h1 class="text-white text-xl text-center">{ramused} / {ramlimit}</h1>
+                        </div>
+                        <div class="bg-zinc-900 m-1 h-14 w-40 hover:m-0 hover:duration-300 rounded-xl p-2 text-center">
+                            <h1 class="text-white text-xs text-center">Disk {resconf}</h1>
+                            <h1 class="text-white text-xl text-center">{diskused} / {disklimit}</h1>
+                        </div>
+                        <div class="bg-zinc-900 m-1 h-14 w-40 hover:m-0 hover:duration-300 rounded-xl p-2 text-center">
+                            <h1 class="text-white text-xs text-center">CPU</h1>
+                            <h1 class="text-white text-xl text-center">{cpuused} / {ccore}</h1>
+                        </div>
+                        <div class="bg-zinc-900 m-1 h-14 w-40 hover:m-0 hover:duration-300 rounded-xl p-2 text-center">
+                          <h1 class="text-white text-xs text-center">Servers</h1>
+                          <h1 class="text-white text-xl text-center">{serversused} / {serverslimit}</h1>
+                        </div>
+                    </div>
+                </div>
+                <form action="/server/edit" method="post">
+                    <div class="grid grid-cols-3 mt-8 w-full">
+                        <div class="grid grid-cols-1 w-full col-span-2">
+                            <div class="bg-gradient-to-br from-zinc-900/50 to-zinc-900/30 h-max p-4 rounded-l-xl">
+                                <div class="w-full space-y-1">
+                                    <h1 class="text-gray-200 ml-1">Server Name: </h1>
+                                    <input class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" placeholder={currentname} type="text" name="name" maxlength={30}></input>
+                                    <input class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" value={srvid} type="hidden" name="srvid" maxlength={30}></input>
+                                </div>
+                                <div class="grid grid-cols-2 w-full col-span-2">
+                                  <div class="w-30 space-y-1">
+                                    <h1 class="text-gray-200 ml-1">RAM: </h1>
+                                    <input class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" placeholder={currentram} type="number" name="ram" maxlength={30}/></input>
+                                </div>
+                                  <div class="ml-1 w-30 space-y-1">
+                                    <h1 class="text-gray-200 ml-1">Disk: </h1>
+                                    <input class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" placeholder={currentdisk} type="number" name="disk" maxlength={30}/></input>
+                                </div>
+                                  <div class="w-30 space-y-1">
+                                    <h1 class="text-gray-200 ml-1">CPU: </h1>
+                                    <input class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" placeholder={currentcpu} type="number" name="cpu" maxlength={30}/></input>
+                                </div>
+                                  <div class="ml-1 w-full space-y-1">
+                                    <h1 class="text-gray-200 ml-1">Server Software: </h1>
+                                    <select class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" name="egg" required={false}>
+                                        {Object.keys(config.eggs).map(egg => (<option value={egg}>{config.eggs[egg].display}</option>))}
+                                    </select>
+                                </div>
+                               </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <button class="w-full flex items-center static place-items-center items-center inset-0 justify-center space-x-1 rounded-xl blur-xs shadow-inner p-4 bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100 rounded-xl shadow-inner bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100" type="submit">Edit Server</button>
+                    </div>
+                </form>
+<Footer />
+            </main>
+        </div>
+    </div>
+    <div class="md:hidden w-screen h-full overflow-x-hidden">
+        <Nav />
+
+        <main class="w-full h-full z-10 bg-zinc-950 pb-24 pt-24 p-4">
+            {errorstate && <div style="border-radius: 15px; color: white; height: 50px; text-align: center; font-size: large;" style="border-radius: 15px;" class="rounded-xl mb-4 bg-red-700 alert">ERROR: {errormsg}</div>}
+            {success && <div style="border-radius: 15px; color: white; height: 50px; text-align: center; font-size: large;" style="border-radius: 15px;" class="rounded-xl mb-1 bg-green-700 alert">Success: {success}</div>}
+            <span class="text-amber-500 text-lg">
+                Resources
+            </span>
+            <div class="grid grid-cols-1 overflow-hidden lg:grid-cols-7 mt-4 gap-8">
+
+                <div class="rounded-xl grid grid-cols-1 lg:grid-cols-2 col-span-4 bg-zinc-950 p-2">
+                    <div class="bg-zinc-900 m-1 hover:m-0 hover:duration-300 duration-100 rounded-xl p-2 text-center">
+                        <h1 class="text-white text-xs text-center">RAM {resconf}</h1>
+                        <h1 class="text-white text-2xl text-center">{ramused} / {ramlimit}</h1>
+                    </div>
+                    <div class="bg-zinc-900 m-1 hover:m-0 hover:duration-300 rounded-xl p-2 text-center">
+                        <h1 class="text-white text-xs text-center">Disk {resconf}</h1>
+                        <h1 class="text-white text-2xl text-center">{diskused} / {disklimit}</h1>
+                    </div>
+                    <div class="bg-zinc-900 m-1 hover:m-0 hover:duration-300 rounded-xl p-2 text-center">
+                        <h1 class="text-white text-xs text-center">CPU</h1>
+                        <h1 class="text-white text-2xl text-center">{cpuused} / {ccore}</h1>
+                    </div>
+                    <div class="bg-zinc-900 m-1 hover:m-0 hover:duration-300 rounded-xl p-2 text-center">
+                      <h1 class="text-white text-xs text-center">Servers</h1>
+                      <h1 class="text-white text-2xl text-center">{serversused} / {serverslimit}</h1>
+                    </div>
+                </div>
+            </div>
+            <div class="grid mt-2 overflow-y-hidden grid-cols-1 w-full">
+                <div class="grid grid-cols-1 w-full col-span-2">
+                    <div class="w-full mb-8 bg-zinc-900/50 h-max p-4 rounded-l-xl">
+                        <form method="POST" action="/server/create">
+                            <div class="grid grid-cols-3 mt-8 w-full">
+                                <div class="grid grid-cols-1 w-full col-span-2">
+                                    <div class="bg-gradient-to-br from-zinc-900/50 to-zinc-900/30 h-max p-4 rounded-l-xl">
+                                        <div class="w-full space-y-1">
+                                            <h1 class="text-gray-200 ml-1">Server Name: </h1>
+                                            <input class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" type="text" name="srvname" maxlength={30}></input>
+                                        </div>
+                                        <div class="grid grid-cols-2 w-full col-span-2">
+                                          <div class="w-30 space-y-1">
+                                            <h1 class="text-gray-200 ml-1">RAM: </h1>
+                                            <input class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" type="number" name="ram" maxlength={30}/></input>
+                                        </div>
+                                          <div class="ml-1 w-30 space-y-1">
+                                            <h1 class="text-gray-200 ml-1">Disk: </h1>
+                                            <input class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" type="number" name="disk" maxlength={30}/></input>
+                                        </div>
+                                          <div class="w-30 space-y-1">
+                                            <h1 class="text-gray-200 ml-1">CPU: </h1>
+                                            <input class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" type="number" name="cpu" maxlength={30}/></input>
+                                        </div>
+                                          <div class="ml-1 w-full space-y-1">
+                                            <h1 class="text-gray-200 ml-1">Server Software: </h1>
+                                            <select class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" name="egg" required={true}>
+                                                {Object.keys(config.eggs).map(egg => (<option value={egg}>{config.eggs[egg].display}</option>))}
+                                            </select>
+                                        </div>
+                                       </div>
+                                    </div>
+                                </div>
+                                <div class="bg-gradient-to-tl from-zinc-900/50 to-zinc-900/30 space-y-3 p-4 rounded-r-xl rounded-b-xl">
+                                    <div class="w-full space-y-1">
+                                        <h1 class="text-gray-200 ml-1">Server Location: </h1>
+                                        <select class="bg-zinc-800 border w-full text-gray-300 duration-300 border-zinc-800 p-2 rounded-xl" name="location" >
+                                            {Object.keys(config.locations).map(location => (<option value={location}>{config.locations[location].name}</option>))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <button class="w-full flex items-center static place-items-center items-center inset-0 justify-center space-x-1 rounded-xl blur-xs shadow-inner p-4 bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100 rounded-xl shadow-inner p-4 bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100" type="submit">Create</button>
+                            </div>
+                        </form>
+                       </div>
+                    </div>
+                </div>
+        </main>
+    <div id="deploydivmobile" class="md:hidden w-screen h-[440px] overflow-y-hidden bg-zinc-950">
+        <div
+            class="shadow-2xl fixed w-full z-50 shadow-black backdrop-blur-2xl bg-zinc-900 rounded-b-3xl p-4">
+            <div class="flex justify-between text-white items-center w-full">
+                <a class="flex items-center mx-auto px-2 text-center text-base font-medium rounded-lg group">
+                    <span
+                        class="text-center pr-1 bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100 bg-clip-text leading-[1.2] tracking-tighter text-transparent font-semibold text-4xl font-nunito">{TITLE}</span>
+                </a>
+            </div>
+        </div>
+    </div>
+    </div>
+</body>
+
+</html>

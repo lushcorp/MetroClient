@@ -1,0 +1,208 @@
+---
+import chalk from 'chalk';
+import config from '../config';
+import { Image,getImage } from 'astro:assets';
+import { TITLE,SITE_DESCRIPTION,LOGO } from '../consts';
+import { supabase } from "../lib/supabase";
+import db from '../database';
+import restype from "../restype"
+const { cookies, redirect } = Astro;
+
+const accessToken = cookies.get("sb-access-token");
+const refreshToken = cookies.get("sb-refresh-token");
+
+if (!accessToken || !refreshToken) {
+  return redirect("/signin");
+}
+
+const { data, error } = await supabase.auth.setSession({
+  refresh_token: refreshToken.value,
+  access_token: accessToken.value,
+});
+
+if (error) {
+  cookies.delete("sb-access-token", {
+    path: "/",
+  });
+  cookies.delete("sb-refresh-token", {
+    path: "/",
+  });
+
+  return redirect("/signin");
+}
+
+const icon = await getImage({src: `${LOGO}`,height: '50', width: '50', format: 'png'})
+const errorstate = Astro.url.searchParams.get('error')! || '';
+const errormsg = Astro.url.searchParams.get('error')! || '';
+
+const {
+  data: { user },
+} = await supabase.auth.getUser()
+
+const metadata = user.user_metadata
+const username = metadata.full_name
+const email = data?.user?.email
+const avatar = metadata.avatar_url
+
+let accountlistjson = await fetch(
+    config.pterodactyl.url + "/api/application/users?include=servers&filter[email]=" + encodeURIComponent(email),
+    {
+        method: "get",
+        headers: {
+            'Content-Type': 'application/json',
+            "Authorization": `Bearer ${config.pterodactyl.api}`
+        }
+    }
+);
+              let accountlist = await accountlistjson.json();
+              let userdata = accountlist.data.filter(acc => acc.attributes.email == email);
+
+let cacheaccount = await fetch(
+config.pterodactyl.url + "/api/application/users/" + userdata[0].attributes.id + "?include=servers",
+ {
+    method: "get",
+    headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${config.pterodactyl.api}` }
+  }
+);
+if (await cacheaccount.statusText == "Not Found") {
+  if (error) {
+    console.log(chalk.red(`[KlovitClient] An error has occured on path ${Astro.url.pathname}:`));
+  };
+};
+let cacheaccountinfo = JSON.parse(await cacheaccount.text());
+    
+const pterodactyl = cacheaccountinfo.attributes;
+const adminstatus = pterodactyl.root_admin;
+
+
+const pagegradient = Astro.url.pathname
+let admingradient;
+if (pagegradient === "/dashboard") {
+    admingradient = true
+}
+let admincoinsgrad;
+if (pagegradient === "/create") {
+    admincoinsgrad = true
+}
+let adminresgrad;
+if (pagegradient === "/account") {
+    adminresgrad = true
+}
+
+---
+<aside class="bg-zinc-950 fixed top-0 left-0 z-40 w-64 h-screen transition-transform -translate-x-full md:translate-x-0" aria-label="Sidenav" id="drawer-navigation">
+<div class="bg-zinc-950 overflow-y-auto py-5 px-6 text-center h-full">
+    <ul class="space-y-2 text-center mx-auto">
+        <center>
+            <li>
+                <a
+                    class="flex items-center mx-auto px-2 text-center text-base font-medium rounded-lg group">
+                    <span
+                        class="text-center bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100 bg-clip-text leading-[1.2] tracking-tighter text-transparent font-semibold text-4xl font-nunito">{TITLE}</span>
+                </a>
+            </li>
+        </center>
+    </ul>
+    <ul class="space-y-2 mt-8 text-center">
+       {admingradient ?  <li>
+        <a href="/admin" id="nav-dashboard" class="flex items-center mx-auto p-3 pl-4 text-base font-medium text-gray-900 rounded-3xl bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100 group hover:duration-300 duration-300 hover:bg-zinc-800">
+            <svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4 12 8-8 8 8M6 10.5V19c0 .6.4 1 1 1h3v-3c0-.6.4-1 1-1h2c.6 0 1 .4 1 1v3h3c.6 0 1-.4 1-1v-8.5"/>
+  </svg>
+            <span class="ml-4">Home</span>
+        </a>
+    </li> : <li>
+        <a href="/admin" id="nav-dashboard"
+            class="flex items-center mx-auto p-3 pl-4 text-base font-medium text-white rounded-3xl from-indigo-200 via-red-200 to-yellow-100 group hover:bg-zinc-800 hover:duration-300 duration-300">
+            <svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4 12 8-8 8 8M6 10.5V19c0 .6.4 1 1 1h3v-3c0-.6.4-1 1-1h2c.6 0 1 .4 1 1v3h3c.6 0 1-.4 1-1v-8.5"/>
+  </svg>
+            <span class="ml-4">Home</span>
+        </a>
+    </li>}
+
+{admincoinsgrad ?  <li>
+    <a href="/admin/coins" id="nav-create" class="flex items-center mx-auto p-3 pl-4 text-base font-medium text-gray-900 rounded-3xl bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100 group hover:duration-300 duration-300 hover:bg-zinc-800">
+        <i class="fa-solid fa-coins"></i><span class="ml-4">Coins</span>
+            </a>
+        </li> : <li>
+    <a href="/admin/coins" id="nav-create" class="flex items-center mx-auto p-3 pl-4 text-base font-medium text-white rounded-3xl from-indigo-200 via-red-200 to-yellow-100 group hover:bg-zinc-800 hover:duration-300 duration-300">
+        <i class="fa-solid fa-coins"></i><span class="ml-4">Coins</span>
+        </a>
+        </li> }
+
+{adminresgrad ?        <li>
+    <a href="/admin/resources" id="nav-account" class="flex items-center mx-auto p-3 pl-4 text-base font-medium text-gray-900 rounded-3xl bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100 group hover:duration-300 duration-300 hover:bg-zinc-800">
+        <i class="fa-solid fa-memory"></i>
+                <span class="ml-4">Resources</span>
+            </a>
+        </li>         : <li>
+            <a href="/admin/resources" id="nav-account" class="flex items-center mx-auto p-3 pl-4 text-base font-medium text-white rounded-3xl from-indigo-200 via-red-200 to-yellow-100 group hover:bg-zinc-800 hover:duration-300 duration-300">
+                <i class="fa-solid fa-memory"></i>
+                <span class="ml-4">Resources</span>
+            </a>
+        </li> }
+    </ul>
+</div>
+<div class="text-white hidden absolute bottom-0 left-0 justify-center p-4 space-x-4 w-full lg:flex z-20">
+    <a href="/dashboard" data-tooltip-target="tooltip-settings"
+        class="inline-flex justify-center p-2 px-10 rounded-3xl cursor-pointer text-gray-100 hover:bg-zinc-800 hover:duration-300 duration-300">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"></path><path d="M5 22a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v3h-2V4H6v16h12v-2h2v3a1 1 0 0 1-1 1H5zm13-6v-3h-7v-2h7V8l5 4-5 4z" fill="currentColor"></path></svg>
+&nbsp;Exit Admin Control
+    </a>
+</div>
+</aside>
+
+<nav class="md:hidden relative w-full px-4 py-2.5 shadow-2xl shadow-black backdrop-blur-2xl bg-gradient-to-r from-gray-800/50 to-zinc-900 rounded-t-2xl z-50">
+    <div class="flex flex-wrap w-full justify-between items-center">
+        <div class="flex w-full space-x-3 justify-center items-center lg:order-2">
+            {config.coins.enabled && <div class="group">
+                <a type="button" href="/admin/coins"
+                    class="flex text-gray-400 group-hover:text-white group-hover:bg-zinc-900 group-hover:border border-zinc-700 group-hover:duration-200 duration-200 animation p-2 rounded-lg cursor-pointer">
+                    <i class="fa-solid fa-coins"></i>
+                    <span
+                        class="opacity-0 invisible w-0 ml-0 group-hover:ml-1 group-hover:w-auto group-hover:visible group-hover:opacity-100 group-active:opacity-100 animation group-hover:duration-1000 text-white">Coins</span>
+                </a>
+            </div>}
+            <div class="group">
+                <a type="button" href="/admin/resources"
+                    class="flex text-gray-400 group-hover:text-white group-hover:bg-zinc-900 group-hover:border border-zinc-700 group-hover:duration-200 duration-200 animation p-2 rounded-lg cursor-pointer">
+                    <i class="fa-solid fa-memory"></i>
+                    <span
+                        class="opacity-0 invisible w-0 ml-0 group-hover:ml-1 group-hover:w-auto group-hover:visible group-hover:opacity-100 group-active:opacity-100 animation group-hover:duration-1000 text-white">Resources</span>
+                </a>
+            </div>
+
+
+            <hr class="border border-zinc-700 py-2.5">
+
+            <div class="justify-start mx-4 -mt-8 items-center">
+                <div class="relative max-w-fit group">
+                    <div
+                        class="absolute -inset-[2px] rounded-xl blur-xs shadow-inner p-4 bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100">
+                    </div>
+                    <div
+                        class="absolute -inset-[0.5px] rounded-xl  blur-[4px] shadow-inner p-4 bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100">
+                    </div>
+                    <button onclick="location.href='/admin'"
+                        class="relative flex text-white bg-[#101010] p-2 rounded-xl cursor-pointer">
+                        <svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4 12 8-8 8 8M6 10.5V19c0 .6.4 1 1 1h3v-3c0-.6.4-1 1-1h2c.6 0 1 .4 1 1v3h3c.6 0 1-.4 1-1v-8.5"/>
+                          </svg>
+                    </button>
+                </div>
+            </div>
+
+            <hr class="border border-zinc-700 py-2.5">
+
+            <div class="group">
+                <a type="button" href="/admin/plans"
+                    class="flex text-gray-400 group-hover:text-white group-hover:bg-zinc-900 group-hover:border border-zinc-700 group-hover:duration-200 duration-200 animation p-2 rounded-lg cursor-pointer">
+
+                    <span
+                        class="opacity-0 invisible w-0 ml-0 group-hover:ml-1 group-hover:w-auto group-hover:visible group-hover:opacity-100 group-active:opacity-100 animation group-hover:duration-1000 text-white">Plans</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>

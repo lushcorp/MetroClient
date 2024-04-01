@@ -1,0 +1,35 @@
+---
+import chalk from 'chalk';
+import config from '../config';
+import { Image,getImage } from 'astro:assets';
+import { TITLE,SITE_DESCRIPTION,LOGO } from '../consts';
+import db from '../database';
+const { cookies, redirect } = Astro;
+
+
+const icon = await getImage({src: `${LOGO}`,height: '50', width: '50', format: 'png'})
+
+
+const year = new Date().getFullYear().toString()
+const yearWithTitle = `${year} ${TITLE}`
+---
+<div class="sticky bottom-0 top-[100vh] pr-16 w-full pt-1 pb-1 flex text-gray-300 justify-between">
+    <p>
+        &copy;
+         {yearWithTitle} | Powered by <a
+            class="text-amber-500"
+            href="https://github.com/Klovit/KlovitClient">KlovitClient</a>
+    </p>
+    <p>Loaded In <span id="loadtime"></span></p>
+    <script type="text/javascript">  
+        var before_loadtime = new Date().getTime();  
+        window.onload = Pageloadtime;  
+        function Pageloadtime() {  
+            var aftr_loadtime = new Date().getTime();  
+            // Time calculating in seconds  
+            pgloadtime = (aftr_loadtime - before_loadtime) / 1000  
+     
+            document.getElementById("loadtime").innerHTML = pgloadtime + "s";  
+        }  
+   </script>  
+</div>
