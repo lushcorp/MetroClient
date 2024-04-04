@@ -61,7 +61,7 @@ let cacheaccountinfo = JSON.parse(await cacheaccount.text());
 const pterodactyl = cacheaccountinfo.attributes;
 // Getting data from Request
 const formData = await request.formData();
-const srvname = formData.get("name")?.toString()
+const srvname = formData.get("srvname")?.toString()
 const srvram = formData.get("ram")?.toString()
 const srvdisk = formData.get("disk")?.toString()
 const srvcpu = formData.get("cpu")?.toString()
